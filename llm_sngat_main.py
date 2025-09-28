@@ -95,7 +95,15 @@ class AQuaDatasetLoader:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            print(f"Loaded {len(data)} problems from JSON file")
+            print(f"Found {len(data)} problems in dataset")
+            
+            # Optionally limit dataset size for faster processing
+            max_size = getattr(self, '_max_dataset_size', None)
+            if max_size and len(data) > max_size:
+                print(f"Limiting dataset to {max_size} problems for faster processing")
+                data = random.sample(data, max_size)
+            
+            print(f"Loading {len(data)} problems...")
             
             for i, item in enumerate(data):
                 try:
@@ -142,7 +150,8 @@ class AQuaDatasetLoader:
                 'source': 'AQuA-RAT Original',
                 'path': str(filepath),
                 'total_problems': len(self.problems),
-                'format': 'JSON'
+                'format': 'JSON',
+                'limited': max_size is not None and len(data) == max_size
             }
             
             print(f"Successfully loaded {len(self.problems)} valid problems")
@@ -151,6 +160,10 @@ class AQuaDatasetLoader:
             print(f"Error loading dataset from {filepath}: {e}")
             print("Falling back to generated sample problems...")
             self._generate_sample_problems()
+    
+    def set_max_dataset_size(self, max_size: int):
+        """Set maximum dataset size for sampling-based loading"""
+        self._max_dataset_size = max_size
     
     def _load_from_huggingface_dir(self, dirpath: Path):
         """Load from Hugging Face datasets directory structure"""
@@ -280,30 +293,124 @@ class AQuaDatasetLoader:
         return info
     
     def create_test_forms(self, form_size: int = 50, seed: int = None) -> Tuple[List[MathProblem], List[MathProblem]]:
-        """Create two non-overlapping test forms using systematic sampling"""
-        if len(self.problems) < form_size * 2:
-            raise ValueError(f"Not enough problems in dataset. Need {form_size * 2}, have {len(self.problems)}")
+        """Create two non-overlapping test forms by sampling from the dataset"""
+        total_needed = form_size * 2
+        
+        if len(self.problems) < total_needed:
+            raise ValueError(f"Not enough problems in dataset. Need {total_needed}, have {len(self.problems)}")
         
         # Set seed for reproducibility
         if seed is not None:
             random.seed(seed)
             np.random.seed(seed)
         
-        # Systematic sampling without replacement
-        indices = list(range(len(self.problems)))
-        random.shuffle(indices)
+        print(f"Sampling {total_needed} problems from {len(self.problems)} available problems...")
         
-        form_x_indices = indices[:form_size]
-        form_y_indices = indices[form_size:form_size*2]
+        # Strategy 1: Random sampling without replacement
+        # This ensures we get a diverse mix of problems
+        sampled_indices = random.sample(range(len(self.problems)), total_needed)
+        
+        # Split into two forms
+        form_x_indices = sampled_indices[:form_size]
+        form_y_indices = sampled_indices[form_size:]
         
         form_x = [self.problems[i] for i in form_x_indices]
         form_y = [self.problems[i] for i in form_y_indices]
         
-        print(f"Created test forms:")
-        print(f"  Form X: {len(form_x)} problems (indices: {min(form_x_indices)}-{max(form_x_indices)})")
-        print(f"  Form Y: {len(form_y)} problems (indices: {min(form_y_indices)}-{max(form_y_indices)})")
+        print(f"Created test forms from sampled problems:")
+        print(f"  Form X: {len(form_x)} problems (sample indices: {min(form_x_indices)}-{max(form_x_indices)})")
+        print(f"  Form Y: {len(form_y)} problems (sample indices: {min(form_y_indices)}-{max(form_y_indices)})")
+        print(f"  Sampling rate: {total_needed/len(self.problems)*100:.1f}% of available problems")
         
         return form_x, form_y
+    
+    def create_stratified_test_forms(self, form_size: int = 50, seed: int = None) -> Tuple[List[MathProblem], List[MathProblem]]:
+        """Create test forms using stratified sampling to ensure balanced difficulty"""
+        total_needed = form_size * 2
+        
+        if len(self.problems) < total_needed:
+            raise ValueError(f"Not enough problems in dataset. Need {total_needed}, have {len(self.problems)}")
+        
+        # Set seed for reproducibility
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+        
+        print(f"Creating stratified test forms from {len(self.problems)} problems...")
+        
+        # Simple stratification by question length as a proxy for difficulty
+        question_lengths = [(i, len(p.question)) for i, p in enumerate(self.problems)]
+        question_lengths.sort(key=lambda x: x[1])
+        
+        # Divide into difficulty strata (tertiles)
+        n_problems = len(question_lengths)
+        easy_indices = [idx for idx, _ in question_lengths[:n_problems//3]]
+        medium_indices = [idx for idx, _ in question_lengths[n_problems//3:2*n_problems//3]]
+        hard_indices = [idx for idx, _ in question_lengths[2*n_problems//3:]]
+        
+        # Sample proportionally from each stratum
+        easy_needed = total_needed // 3
+        medium_needed = total_needed // 3
+        hard_needed = total_needed - easy_needed - medium_needed
+        
+        sampled_easy = random.sample(easy_indices, min(easy_needed, len(easy_indices)))
+        sampled_medium = random.sample(medium_indices, min(medium_needed, len(medium_indices)))
+        sampled_hard = random.sample(hard_indices, min(hard_needed, len(hard_indices)))
+        
+        # Fill remaining with random selection if strata don't have enough
+        all_sampled = sampled_easy + sampled_medium + sampled_hard
+        if len(all_sampled) < total_needed:
+            remaining_indices = [i for i in range(len(self.problems)) if i not in all_sampled]
+            additional = random.sample(remaining_indices, total_needed - len(all_sampled))
+            all_sampled.extend(additional)
+        
+        # Shuffle and split into forms
+        random.shuffle(all_sampled)
+        form_x_indices = all_sampled[:form_size]
+        form_y_indices = all_sampled[form_size:]
+        
+        form_x = [self.problems[i] for i in form_x_indices]
+        form_y = [self.problems[i] for i in form_y_indices]
+        
+        print(f"Created stratified test forms:")
+        print(f"  Easy problems: {len(sampled_easy)} ({len(sampled_easy)/total_needed*100:.1f}%)")
+        print(f"  Medium problems: {len(sampled_medium)} ({len(sampled_medium)/total_needed*100:.1f}%)")
+        print(f"  Hard problems: {len(sampled_hard)} ({len(sampled_hard)/total_needed*100:.1f}%)")
+        print(f"  Form X: {len(form_x)} problems")
+        print(f"  Form Y: {len(form_y)} problems")
+        
+        return form_x, form_y
+    
+    def get_sampling_statistics(self, form_x: List[MathProblem], form_y: List[MathProblem]) -> Dict[str, Any]:
+        """Get statistics about the sampled test forms"""
+        all_forms = form_x + form_y
+        
+        # Question length statistics
+        lengths_x = [len(p.question) for p in form_x]
+        lengths_y = [len(p.question) for p in form_y]
+        lengths_all = [len(p.question) for p in all_forms]
+        
+        # Answer distribution
+        answers_x = [p.correct for p in form_x]
+        answers_y = [p.correct for p in form_y]
+        
+        stats = {
+            'total_sampled': len(all_forms),
+            'form_x_size': len(form_x),
+            'form_y_size': len(form_y),
+            'sampling_rate': len(all_forms) / len(self.problems) * 100,
+            'question_length_stats': {
+                'form_x': {'mean': np.mean(lengths_x), 'std': np.std(lengths_x)},
+                'form_y': {'mean': np.mean(lengths_y), 'std': np.std(lengths_y)},
+                'combined': {'mean': np.mean(lengths_all), 'std': np.std(lengths_all)}
+            },
+            'answer_distribution': {
+                'form_x': {letter: answers_x.count(letter) for letter in ['A', 'B', 'C', 'D', 'E']},
+                'form_y': {letter: answers_y.count(letter) for letter in ['A', 'B', 'C', 'D', 'E']}
+            }
+        }
+        
+        return stats
     
     def analyze_dataset(self) -> Dict[str, Any]:
         """Analyze the dataset for quality and characteristics"""
@@ -459,7 +566,7 @@ class LLMSNGATProcessor:
         self.simulator = simulator
         
     def stage_one_simulation(self, n_students: int = 150, form_size: int = 50, 
-                           seed: int = None) -> Tuple[
+                           seed: int = None, use_stratified: bool = False) -> Tuple[
         List[MathProblem], List[MathProblem], List[SimulatedStudent], List[SimulatedStudent]]:
         """Stage 1: Simulate responses to original forms without anchors"""
         
@@ -470,13 +577,32 @@ class LLMSNGATProcessor:
             np.random.seed(seed)
             random.seed(seed)
         
-        # Create test forms
-        form_x, form_y = self.dataset_loader.create_test_forms(form_size, seed)
+        # Create test forms by sampling from the dataset
+        if use_stratified:
+            form_x, form_y = self.dataset_loader.create_stratified_test_forms(form_size, seed)
+        else:
+            form_x, form_y = self.dataset_loader.create_test_forms(form_size, seed)
         
-        # Show dataset information
+        # Show dataset and sampling information
         dataset_info = self.dataset_loader.get_dataset_info()
         print(f"Using dataset: {dataset_info.get('source', 'Unknown')}")
         print(f"Total available problems: {dataset_info.get('total_problems', 0)}")
+        
+        # Get sampling statistics
+        sampling_stats = self.dataset_loader.get_sampling_statistics(form_x, form_y)
+        print(f"Sampling statistics:")
+        print(f"  Sampled {sampling_stats['total_sampled']} problems ({sampling_stats['sampling_rate']:.1f}% of dataset)")
+        print(f"  Form X: {sampling_stats['form_x_size']} problems")
+        print(f"  Form Y: {sampling_stats['form_y_size']} problems")
+        
+        # Show question length balance
+        len_stats = sampling_stats['question_length_stats']
+        print(f"  Avg question length - Form X: {len_stats['form_x']['mean']:.1f}, Form Y: {len_stats['form_y']['mean']:.1f}")
+        
+        # Show answer distribution balance
+        ans_dist_x = sampling_stats['answer_distribution']['form_x']
+        ans_dist_y = sampling_stats['answer_distribution']['form_y']
+        print(f"  Answer balance - Form X: {ans_dist_x}, Form Y: {ans_dist_y}")
         
         # Generate students
         student_simulator = StudentSimulator()
@@ -990,9 +1116,9 @@ def main():
     os.makedirs('results', exist_ok=True)
     os.makedirs('figures', exist_ok=True)
     
-    # Stage 1: Initial simulation
+    # Stage 1: Initial simulation with sampling
     form_x, form_y, students_x, students_y = processor.stage_one_simulation(
-        n_students=150, form_size=50
+        n_students=150, form_size=50, use_stratified=False
     )
     
     print(f"Created test forms: Form X ({len(form_x)} items), Form Y ({len(form_y)} items)")

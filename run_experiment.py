@@ -19,6 +19,10 @@ def main():
                       help='Output directory for results')
     parser.add_argument('--seed', type=int, default=42,
                       help='Random seed for reproducibility')
+    parser.add_argument('--use-stratified', action='store_true',
+                      help='Use stratified sampling for test forms')
+    parser.add_argument('--max-dataset-size', type=int, default=None,
+                      help='Maximum number of problems to load from dataset')
     
     args = parser.parse_args()
     
@@ -28,6 +32,10 @@ def main():
     config.SIMULATION.form_size = args.form_size
     config.SIMULATION.common_item_sizes = args.common_sizes
     config.RANDOM_SEED = args.seed
+    
+    # Set dataset size limit
+    if args.max_dataset_size:
+        config.MAX_DATASET_SIZE = args.max_dataset_size
     
     if args.output_dir:
         config.RESULTS_DIR = args.output_dir
@@ -52,6 +60,9 @@ def main():
     print(f"Common item sizes: {args.common_sizes}")
     print(f"Use real LLM: {args.use_real_llm}")
     print(f"Random seed: {args.seed}")
+    print(f"Use stratified sampling: {args.use_stratified}")
+    if args.max_dataset_size:
+        print(f"Max dataset size: {args.max_dataset_size}")
     print("")
     
     # Show dataset information if provided
@@ -95,7 +106,8 @@ def main():
             use_real_llm=args.use_real_llm,
             n_replications=args.replications,
             dataset_path=args.dataset_path,
-            seed=args.seed
+            seed=args.seed,
+            use_stratified=args.use_stratified
         )
         
         # Create comparison plots

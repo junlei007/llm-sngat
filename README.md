@@ -39,6 +39,99 @@ The AQuA-RAT dataset consists of approximately 100,000 algebraic word problems w
   "correct": "A"
 }
 ```
+
+### Test Form Creation Strategy
+
+Unlike traditional approaches that use the entire dataset, this implementation follows a more realistic testing scenario by sampling a subset of problems to create test forms:
+
+- **Form X**: 50 problems sampled from AQuA dataset
+- **Form Y**: 50 problems sampled from AQuA dataset  
+- **No overlap**: Ensures statistical independence between forms
+- **Sampling methods**: 
+  - Random sampling (default)
+  - Stratified sampling (optional, balances difficulty)
+
+### Sample Data from Research Paper
+
+The repository includes the actual mathematical problems used in the research paper, stored in `data/sample_items.txt`. This file contains 100 carefully selected AQuA problems:
+
+- **Questions 1-50**: Form X problems
+- **Questions 51-100**: Form Y problems
+
+Each problem follows the standardized format:
+```json
+{"idx": "Q1", "question": "The vertex of a parallelogram are (1, 0), (3, 0), (1, 1) and (3, 1) respectively. If line L passes through the origin and divided the parallelogram into two identical quadrilaterals, what is the slope of line L?", "options": ["A). 1/2", "B)2", "C)1/4", "D)3", "E)3/4"]}
+```
+
+This sample dataset can be used to:
+- Replicate the exact experimental conditions from the research paper
+- Test the LLM-SNGAT methodology with known problem sets
+- Validate equating results against published findings
+- Demonstrate the system without requiring the full AQuA dataset download
+
+### Response Format for LLM Simulation
+
+When using real LLMs for response simulation, the system uses a standardized JSON response format:
+
+```json
+{
+  "Q1": "A",
+  "Q2": "B", 
+  "Q3": "D",
+  ...
+  "Q50": "C"
+}
+```
+
+This format ensures:
+- Clean parsing of LLM responses
+- Consistent data structure across different models
+- Easy validation and error handling
+- Compatibility with the equating analysis pipeline
+
+### Using the Research Paper Sample Data
+
+To use the exact problems from the research paper:
+
+```python
+# Load the research sample data
+dataset_loader = AQuaDatasetLoader('data/sample_items.txt')
+
+# Or load through the project structure
+form_x, form_y = load_sample_forms_from_paper()
+```
+
+### Example Usage with Different Data Sources
+
+```python
+# Using full AQuA dataset with random sampling
+dataset_loader = AQuaDatasetLoader('data/AQuA/train.json')
+form_x, form_y = dataset_loader.create_test_forms(form_size=50)
+
+# Using research paper's exact sample
+dataset_loader = AQuaDatasetLoader('data/sample_items.txt')
+form_x, form_y = dataset_loader.create_test_forms(form_size=50)
+
+# Using stratified sampling (balanced difficulty)
+form_x, form_y = dataset_loader.create_stratified_test_forms(form_size=50)
+
+# Get sampling statistics
+stats = dataset_loader.get_sampling_statistics(form_x, form_y)
+print(f"Sampling rate: {stats['sampling_rate']:.2f}%")
+```
+
+### Citation
+
+```bibtex
+@inproceedings{ling2017program,
+  title={Program induction by rationale generation: Learning to solve and explain algebraic word problems},
+  author={Ling, Wang and Yogatama, Dani and Dyer, Chris and Blunsom, Phil},
+  booktitle={Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages={158--167},
+  year={2017}
+}
+```
+
 ## Installation
 
 1. Clone the repository:
@@ -109,15 +202,32 @@ python run_experiment.py \
   --dataset-path data/AQuA/train.json \
   --use-real-llm
 
-# Custom configuration
+# Custom configuration with stratified sampling
 python run_experiment.py \
   --models GPT-4o DeepSeek-R1 \
   --n-students 200 \
   --form-size 60 \
   --common-sizes 5 10 15 20 25 \
   --replications 3 \
-  --dataset-path data/aqua_rat
+  --dataset-path data/aqua_rat \
+  --use-stratified
+
+# Quick development test with limited dataset
+python run_experiment.py \
+  --max-dataset-size 500 \
+  --form-size 25 \
+  --models GPT-4o
 ```
+
+### Research Implementation Note
+
+This implementation is designed to replicate the methodology described in academic research. The sampling approach (50 problems per test form) reflects realistic testing scenarios while maintaining the statistical rigor required for psychometric equating analysis.
+
+**Key advantages of the sampling approach:**
+- **Computational efficiency**: Faster processing compared to using entire dataset
+- **Realistic scale**: Matches typical standardized test lengths (50-100 items)
+- **Experimental control**: Reproducible results through seed-based sampling
+- **Flexibility**: Easy to adjust form size based on research requirements
 
 ### Jupyter Notebook Demo
 
@@ -142,6 +252,29 @@ The implementation provides standard errors calculated at each raw score level, 
 ------------------------------------------------------------
  AVERAGE       1.2345       2.1234
 ```
+
+### LLM Response Collection
+
+For real LLM implementation, the system collects responses using a standardized prompt that instructs the model to:
+1. Role-play as a student with specified mathematical ability
+2. Consider demographic characteristics (gender, location)
+3. Respond in JSON format for clean parsing
+
+**Example LLM prompt template:**
+```
+请扮演一名来自中国北京的学生，姓名是张明。该学生的性别是男。该学生的数学能力是75.0，最高能力为100，能力越高表示回答正确的概率越高。
+
+请不要输出思考过程，只输出答案并且按json格式输出答案，示例如下：
+{"Q1":"A", "Q2":"B", "Q3":"D"}
+
+[问题列表]
+```
+
+This approach ensures:
+- Consistent response format across different LLMs
+- Clean data extraction and processing
+- Reproducible experimental conditions
+- Scalable data collection for large-scale studies
 
 ### Integration with CIPE Software
 
@@ -260,7 +393,6 @@ And the original AQuA dataset:
 
 For questions and support:
 - Create an issue in this repository
-- Check the [documentation](docs/)
 - Review the [demo notebook](demo.ipynb)
 
 ---
