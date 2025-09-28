@@ -366,7 +366,7 @@ If you use this implementation in your research, please cite:
   title={LLM-SNGAT: LLM-Simulated Nonequivalent Groups with Anchor Test},
   author={Research Team},
   year={2025},
-  url={https://github.com/yourusername/llm-sngat}
+  url={https://github.com/junlei007/llm-sngat}
 }
 ```
 
