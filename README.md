@@ -39,26 +39,6 @@ The AQuA-RAT dataset consists of approximately 100,000 algebraic word problems w
   "correct": "A"
 }
 ```
-
-### Data Splits
-
-The dataset contains:
-- **Training set**: 97,467 problems
-- **Development set**: 254 problems  
-- **Test set**: 254 problems
-
-### Citation
-
-```bibtex
-@inproceedings{ling2017program,
-  title={Program induction by rationale generation: Learning to solve and explain algebraic word problems},
-  author={Ling, Wang and Yogatama, Dani and Dyer, Chris and Blunsom, Phil},
-  booktitle={Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
-  pages={158--167},
-  year={2017}
-}
-```
-
 ## Installation
 
 1. Clone the repository:
