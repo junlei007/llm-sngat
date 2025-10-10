@@ -389,12 +389,6 @@ And the original AQuA dataset:
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## Support
-
-For questions and support:
-- Create an issue in this repository
-- Review the [demo notebook](demo.ipynb)
-
 ---
 
 **Note**: This implementation provides simplified standard error approximations for demonstration. For publication-quality research, use the CIPE software integration for precise Delta method calculations.
